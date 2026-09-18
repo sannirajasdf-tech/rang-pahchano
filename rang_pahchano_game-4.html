@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>रंग पहचानो — Color Tap Challenge</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0; font-family:system-ui,-apple-system,"Noto Sans Devanagari",sans-serif;
+  min-height:100vh; background:linear-gradient(135deg,#111827,#312e81);
+  color:#fff; display:flex; justify-content:center; align-items:center; padding:18px;
+}
+.game{
+  width:min(620px,100%); background:rgba(255,255,255,.1); backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.2); border-radius:26px; padding:22px;
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+}
+h1{text-align:center;margin:0 0 6px;font-size:30px}
+.sub{text-align:center;color:#dbeafe;margin:0 0 18px}
+.top{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.badge{background:rgba(0,0,0,.25);padding:8px 13px;border-radius:999px;font-weight:700}
+.instruction{
+  text-align:center;background:#fff;color:#111827;border-radius:18px;padding:14px;
+  margin:18px 0 12px;font-size:22px;font-weight:800;
+}
+.timerWrap{height:12px;background:rgba(255,255,255,.2);border-radius:20px;overflow:hidden;margin-bottom:18px}
+.timer{height:100%;width:100%;background:#22c55e;transition:width .1s linear}
+.colors{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.color{
+  aspect-ratio:1;border:3px solid rgba(255,255,255,.85);border-radius:18px;
+  cursor:pointer;position:relative;box-shadow:0 7px 14px rgba(0,0,0,.2);
+  transition:transform .12s,filter .12s;
+}
+.color:active{transform:scale(.92)}
+.mark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:48px;font-weight:900;text-shadow:0 2px 5px rgba(0,0,0,.35)}
+.correct{animation:pop .35s}
+.wrong{animation:shake .35s}
+@keyframes pop{50%{transform:scale(1.08)}}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.result{text-align:center;min-height:62px;margin-top:15px;font-size:19px;font-weight:800}
+button{
+  width:100%;padding:14px;border:0;border-radius:15px;background:#facc15;color:#111827;
+  font-size:18px;font-weight:900;cursor:pointer;margin-top:5px;
+}
+button:active{transform:scale(.98)}
+.hidden{display:none!important}
+.note{text-align:center;color:#cbd5e1;font-size:13px;margin-top:14px}
+@media(max-width:430px){
+  .game{padding:16px;border-radius:22px}
+  h1{font-size:25px}.instruction{font-size:19px}
+  .colors{gap:7px}.color{border-radius:13px}.mark{font-size:34px}
+}
+</style>
+</head>
+<body>
+<div class="game">
+  <h1>🎨 रंग पहचानो</h1>
+  <p class="sub">सही रंग पर टैप करके अपना स्कोर बढ़ाओ!</p>
+
+  <div class="top">
+    <div class="badge">स्कोर: <span id="score">0</span></div>
+    <div class="badge">राउंड: <span id="round">1</span>/<span id="total">10</span></div>
+    <div class="badge">⏱️ <span id="seconds">5.0</span> सेकंड</div>
+  </div>
+
+  <div class="instruction" id="instruction">लाल रंग पर टैप करें</div>
+  <div class="timerWrap"><div class="timer" id="timer"></div></div>
+
+  <div class="colors" id="colors"></div>
+  <div class="result" id="result"></div>
+  <button id="next" class="hidden">अगला राउंड ➜</button>
+  <button id="restart" class="hidden">🔄 फिर से खेलें</button>
+  <div class="note">हर राउंड में 10 रंगों में से केवल एक सही उत्तर है।</div>
+</div>
+
+<script>
+const colors = [
+  {name:"लाल", hex:"#ef4444"},
+  {name:"नीला", hex:"#3b82f6"},
+  {name:"हरा", hex:"#22c55e"},
+  {name:"पीला", hex:"#facc15"},
+  {name:"नारंगी", hex:"#f97316"},
+  {name:"बैंगनी", hex:"#a855f7"},
+  {name:"गुलाबी", hex:"#ec4899"},
+  {name:"आसमानी", hex:"#06b6d4"},
+  {name:"भूरा", hex:"#92400e"},
+  {name:"काला", hex:"#111111"}
+];
+
+const totalRounds = 10;
+let round=1, score=0, target=null, locked=false, interval=null;
+const gameTime=5;
+const $=id=>document.getElementById(id);
+
+$("total").textContent=totalRounds;
+
+function shuffle(a){ return [...a].sort(()=>Math.random()-.5); }
+
+function startRound(){
+  clearInterval(interval); locked=false;
+  $("result").textContent="";
+  $("next").classList.add("hidden");
+  $("restart").classList.add("hidden");
+  $("round").textContent=round;
+  target=colors[Math.floor(Math.random()*colors.length)];
+  $("instruction").textContent=`${target.name} रंग पर टैप करें`;
+
+  const choices=shuffle(colors);
+  $("colors").innerHTML="";
+  choices.forEach(c=>{
+    const el=document.createElement("div");
+    el.className="color";
+    el.style.background=c.hex;
+    el.dataset.name=c.name;
+    el.setAttribute("aria-label",c.name);
+    el.addEventListener("click",()=>choose(el,c));
+    $("colors").appendChild(el);
+  });
+  startTimer();
+}
+
+function startTimer(){
+  let left=gameTime;
+  $("seconds").textContent=left.toFixed(1);
+  $("timer").style.width="100%";
+  $("timer").style.background="#22c55e";
+  interval=setInterval(()=>{
+    left-=0.1;
+    if(left<=0){ left=0; $("seconds").textContent="0.0"; clearInterval(interval); timeout(); return; }
+    $("seconds").textContent=left.toFixed(1);
+    $("timer").style.width=(left/gameTime*100)+"%";
+    if(left<=2) $("timer").style.background="#ef4444";
+    else if(left<=3) $("timer").style.background="#facc15";
+  },100);
+}
+
+function disableChoices(){
+  document.querySelectorAll(".color").forEach(x=>x.style.pointerEvents="none");
+}
+
+function choose(el,c){
+  if(locked)return;
+  locked=true; clearInterval(interval); disableChoices();
+  if(c.name===target.name){
+    score++; $("score").textContent=score;
+    el.classList.add("correct");
+    el.insertAdjacentHTML("beforeend",'<div class="mark">✓</div>');
+    $("result").innerHTML=`<span style="color:#86efac">सही! 🎉 ${target.name} रंग सही है।</span>`;
+  }else{
+    el.classList.add("wrong");
+    el.insertAdjacentHTML("beforeend",'<div class="mark">✕</div>');
+    const correctEl=[...document.querySelectorAll(".color")].find(x=>x.dataset.name===target.name);
+    if(correctEl){
+      correctEl.insertAdjacentHTML("beforeend",'<div class="mark">✓</div>');
+      correctEl.classList.add("correct");
+    }
+    $("result").innerHTML=`<span style="color:#fca5a5">गलत! ❌ सही उत्तर <b>${target.name}</b> है।</span>`;
+  }
+  showNext();
+}
+
+function timeout(){
+  if(locked)return;
+  locked=true; disableChoices();
+  const correctEl=[...document.querySelectorAll(".color")].find(x=>x.dataset.name===target.name);
+  if(correctEl){correctEl.insertAdjacentHTML("beforeend",'<div class="mark">✓</div>');correctEl.classList.add("correct");}
+  $("result").innerHTML=`<span style="color:#fca5a5">समय खत्म! ⏰ सही उत्तर <b>${target.name}</b> है।</span>`;
+  showNext();
+}
+
+function showNext(){
+  if(round<totalRounds) $("next").classList.remove("hidden");
+  else{
+    $("result").innerHTML += `<br><span style="color:#fde68a">🎊 गेम पूरा! आपका स्कोर: ${score}/${totalRounds}</span>`;
+    $("restart").classList.remove("hidden");
+  }
+}
+
+$("next").addEventListener("click",()=>{round++;startRound();});
+$("restart").addEventListener("click",()=>{round=1;score=0;$("score").textContent=0;startRound();});
+
+startRound();
+</script>
+</body>
+</html>
